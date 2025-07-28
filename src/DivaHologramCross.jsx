@@ -3,6 +3,12 @@ import React, { Suspense, useEffect, useState, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, useGLTF, useProgress, Html } from '@react-three/drei';
 import { useDropzone } from 'react-dropzone';
+import VoiceControls from './components/VoiceControls';
+import HeadTracking from './components/HeadTracking';
+import TextDetection from './components/TextDetection';
+import AnimationControls from './components/AnimationControls';
+import { useFrame } from '@react-three/fiber';
+import { useRef } from 'react';
 
 const DEFAULT_MODEL_PATH = null; // No default model until user provides one
 
@@ -11,7 +17,38 @@ const Loader = () => {
   return <Html center style={{ color: 'white' }}>{progress.toFixed(0)} %</Html>;
 };
 
-const DivaModel = ({ rotation = [0, 0, 0], modelUrl }) => {
+const DivaModel = ({ rotation = [0, 0, 0], modelUrl, animation, headPosition }) => {
+  const meshRef = useRef();
+  
+  useFrame((state) => {
+    if (!meshRef.current || !animation.enabled) return;
+    
+    const time = state.clock.getElapsedTime() * animation.speed;
+    
+    switch (animation.type) {
+      case 'rotate':
+        meshRef.current.rotation.y = time;
+        break;
+      case 'bounce':
+        meshRef.current.position.y = Math.sin(time * 2) * 0.5 - 1.2;
+        break;
+      case 'float':
+        meshRef.current.position.y = Math.sin(time) * 0.3 - 1.2;
+        meshRef.current.rotation.y = Math.sin(time * 0.5) * 0.2;
+        break;
+      case 'pulse':
+        const scale = 1 + Math.sin(time * 3) * 0.1;
+        meshRef.current.scale.set(scale, scale, scale);
+        break;
+    }
+    
+    // Apply head tracking offset
+    if (headPosition && meshRef.current) {
+      meshRef.current.rotation.x = rotation[0] + headPosition.y * 0.3;
+      meshRef.current.rotation.y = rotation[1] + headPosition.x * 0.3;
+    }
+  });
+  
   if (!modelUrl) {
     return (
       <Html center style={{ color: 'white', textAlign: 'center' }}>
@@ -28,6 +65,7 @@ const DivaModel = ({ rotation = [0, 0, 0], modelUrl }) => {
   const { scene } = useGLTF(modelUrl);
   return (
     <primitive
+      ref={meshRef}
       object={scene}
       rotation={rotation}
       position={[0, -1.2, 0]}
@@ -36,13 +74,18 @@ const DivaModel = ({ rotation = [0, 0, 0], modelUrl }) => {
   );
 };
 
-const Viewport = ({ cameraPosition, rotation, style, modelUrl }) => (
+const Viewport = ({ cameraPosition, rotation, style, modelUrl, animation, headPosition }) => (
   <div style={style}>
     <Canvas camera={{ position: cameraPosition, fov: 35 }}>
       <ambientLight intensity={0.5} />
       <directionalLight position={[5, 5, 5]} intensity={1} />
       <Suspense fallback={<Loader />}>
-        <DivaModel rotation={rotation} modelUrl={modelUrl} />
+        <DivaModel 
+          rotation={rotation} 
+          modelUrl={modelUrl} 
+          animation={animation}
+          headPosition={headPosition}
+        />
       </Suspense>
       {modelUrl && <OrbitControls enableZoom={false} />}
     </Canvas>
@@ -51,6 +94,44 @@ const Viewport = ({ cameraPosition, rotation, style, modelUrl }) => (
 
 export default function DivaHologramCross() {
   const [modelUrl, setModelUrl] = useState(DEFAULT_MODEL_PATH);
+  const [animation, setAnimation] = useState({ enabled: false, speed: 1, type: 'rotate' });
+  const [headPosition, setHeadPosition] = useState({ x: 0, y: 0 });
+
+  const handleVoiceCommand = useCallback((command) => {
+    console.log('Voice command:', command);
+    
+    if (command.includes('rotate') || command.includes('spin')) {
+      setAnimation(prev => ({ ...prev, enabled: true, type: 'rotate' }));
+    } else if (command.includes('stop')) {
+      setAnimation(prev => ({ ...prev, enabled: false }));
+    } else if (command.includes('bounce')) {
+      setAnimation(prev => ({ ...prev, enabled: true, type: 'bounce' }));
+    } else if (command.includes('float')) {
+      setAnimation(prev => ({ ...prev, enabled: true, type: 'float' }));
+    } else if (command.includes('pulse')) {
+      setAnimation(prev => ({ ...prev, enabled: true, type: 'pulse' }));
+    } else if (command.includes('faster')) {
+      setAnimation(prev => ({ ...prev, speed: Math.min(prev.speed + 0.5, 3) }));
+    } else if (command.includes('slower')) {
+      setAnimation(prev => ({ ...prev, speed: Math.max(prev.speed - 0.5, 0.1) }));
+    } else if (command.includes('reset')) {
+      setAnimation({ enabled: false, speed: 1, type: 'rotate' });
+      setHeadPosition({ x: 0, y: 0 });
+    }
+  }, []);
+
+  const handleTextDetected = useCallback((text) => {
+    console.log('Text detected:', text);
+    handleVoiceCommand(text.toLowerCase());
+  }, [handleVoiceCommand]);
+
+  const handleHeadMove = useCallback((position) => {
+    setHeadPosition(position);
+  }, []);
+
+  const handleAnimationChange = useCallback((newAnimation) => {
+    setAnimation(newAnimation);
+  }, []);
 
   const onDrop = useCallback((acceptedFiles) => {
     const file = acceptedFiles[0];
@@ -99,6 +180,8 @@ export default function DivaHologramCross() {
         rotation={[0, 0, 0]}
         style={{ gridColumn: 2, gridRow: 1 }}
         modelUrl={modelUrl}
+        animation={animation}
+        headPosition={headPosition}
       />
 
       <div></div>
@@ -109,6 +192,8 @@ export default function DivaHologramCross() {
         rotation={[0, Math.PI / 2, 0]}
         style={{ gridColumn: 1, gridRow: 2 }}
         modelUrl={modelUrl}
+        animation={animation}
+        headPosition={headPosition}
       />
 
       <div></div>
@@ -119,6 +204,8 @@ export default function DivaHologramCross() {
         rotation={[0, -Math.PI / 2, 0]}
         style={{ gridColumn: 3, gridRow: 2 }}
         modelUrl={modelUrl}
+        animation={animation}
+        headPosition={headPosition}
       />
 
       <div></div>
@@ -129,6 +216,8 @@ export default function DivaHologramCross() {
         rotation={[0, Math.PI, 0]}
         style={{ gridColumn: 2, gridRow: 3 }}
         modelUrl={modelUrl}
+        animation={animation}
+        headPosition={headPosition}
       />
 
       <div></div>
@@ -166,6 +255,11 @@ export default function DivaHologramCross() {
           <p>Drag and drop a .glb file to get started</p>
         </div>
       )}
+      
+      <VoiceControls onCommand={handleVoiceCommand} />
+      <HeadTracking onHeadMove={handleHeadMove} />
+      <TextDetection onTextDetected={handleTextDetected} />
+      <AnimationControls onAnimationChange={handleAnimationChange} />
     </div>
   );
 }
