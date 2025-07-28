@@ -40,6 +40,8 @@ const DivaModel = ({ rotation = [0, 0, 0], modelUrl, animation, headPosition }) 
         const scale = 1 + Math.sin(time * 3) * 0.1;
         meshRef.current.scale.set(scale, scale, scale);
         break;
+      default:
+        break;
     }
     
     // Apply head tracking offset
@@ -62,16 +64,30 @@ const DivaModel = ({ rotation = [0, 0, 0], modelUrl, animation, headPosition }) 
     );
   }
   
-  const { scene } = useGLTF(modelUrl);
-  return (
-    <primitive
-      ref={meshRef}
-      object={scene}
-      rotation={rotation}
-      position={[0, -1.2, 0]}
-      scale={1.5}
-    />
-  );
+  try {
+    const { scene } = useGLTF(modelUrl);
+    return (
+      <primitive
+        ref={meshRef}
+        object={scene}
+        rotation={rotation}
+        position={[0, -1.2, 0]}
+        scale={1.5}
+      />
+    );
+  } catch (error) {
+    console.error('Error loading model:', error);
+    return (
+      <Html center style={{ color: 'red', textAlign: 'center' }}>
+        <div>
+          <p>Error loading model</p>
+          <p style={{ fontSize: '0.8em', opacity: 0.7 }}>
+            Please try a different .glb file
+          </p>
+        </div>
+      </Html>
+    );
+  }
 };
 
 const Viewport = ({ cameraPosition, rotation, style, modelUrl, animation, headPosition }) => (
@@ -100,21 +116,25 @@ export default function DivaHologramCross() {
   const handleVoiceCommand = useCallback((command) => {
     console.log('Voice command:', command);
     
-    if (command.includes('rotate') || command.includes('spin')) {
+    if (!command || typeof command !== 'string') return;
+    
+    const lowerCommand = command.toLowerCase().trim();
+    
+    if (lowerCommand.includes('rotate') || lowerCommand.includes('spin')) {
       setAnimation(prev => ({ ...prev, enabled: true, type: 'rotate' }));
-    } else if (command.includes('stop')) {
+    } else if (lowerCommand.includes('stop')) {
       setAnimation(prev => ({ ...prev, enabled: false }));
-    } else if (command.includes('bounce')) {
+    } else if (lowerCommand.includes('bounce')) {
       setAnimation(prev => ({ ...prev, enabled: true, type: 'bounce' }));
-    } else if (command.includes('float')) {
+    } else if (lowerCommand.includes('float')) {
       setAnimation(prev => ({ ...prev, enabled: true, type: 'float' }));
-    } else if (command.includes('pulse')) {
+    } else if (lowerCommand.includes('pulse')) {
       setAnimation(prev => ({ ...prev, enabled: true, type: 'pulse' }));
-    } else if (command.includes('faster')) {
+    } else if (lowerCommand.includes('faster')) {
       setAnimation(prev => ({ ...prev, speed: Math.min(prev.speed + 0.5, 3) }));
-    } else if (command.includes('slower')) {
+    } else if (lowerCommand.includes('slower')) {
       setAnimation(prev => ({ ...prev, speed: Math.max(prev.speed - 0.5, 0.1) }));
-    } else if (command.includes('reset')) {
+    } else if (lowerCommand.includes('reset')) {
       setAnimation({ enabled: false, speed: 1, type: 'rotate' });
       setHeadPosition({ x: 0, y: 0 });
     }
@@ -122,22 +142,28 @@ export default function DivaHologramCross() {
 
   const handleTextDetected = useCallback((text) => {
     console.log('Text detected:', text);
-    handleVoiceCommand(text.toLowerCase());
+    handleVoiceCommand(text);
   }, [handleVoiceCommand]);
 
   const handleHeadMove = useCallback((position) => {
+    if (!position || typeof position.x !== 'number' || typeof position.y !== 'number') return;
     setHeadPosition(position);
   }, []);
 
   const handleAnimationChange = useCallback((newAnimation) => {
+    if (!newAnimation || typeof newAnimation !== 'object') return;
     setAnimation(newAnimation);
   }, []);
 
   const onDrop = useCallback((acceptedFiles) => {
+    if (!acceptedFiles || acceptedFiles.length === 0) return;
+    
     const file = acceptedFiles[0];
     if (file && file.name.endsWith('.glb')) {
       const url = URL.createObjectURL(file);
       setModelUrl(url);
+    } else {
+      console.warn('Please upload a .glb file');
     }
   }, []);
 
@@ -150,13 +176,21 @@ export default function DivaHologramCross() {
   useEffect(() => {
     if (modelUrl) {
       try {
-      useGLTF.preload(modelUrl);
+        useGLTF.preload(modelUrl);
       } catch (e) {
-      console.warn(`Preload failed: ${modelUrl} not found`, e);
+        console.warn(`Preload failed: ${modelUrl} not found`, e);
       }
     }
   }, [modelUrl]);
 
+  useEffect(() => {
+    // Cleanup object URLs to prevent memory leaks
+    return () => {
+      if (modelUrl && modelUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(modelUrl);
+      }
+    };
+  }, [modelUrl]);
   return (
     <div
       {...getRootProps()}

@@ -26,13 +26,14 @@ const VoiceControls = ({ onCommand }) => {
         
         if (finalTranscript) {
           setTranscript(finalTranscript);
-          onCommand(finalTranscript.toLowerCase());
+          onCommand(finalTranscript.trim());
         }
       };
 
       recognitionRef.current.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
         setIsListening(false);
+        setTranscript('');
       };
 
       recognitionRef.current.onend = () => {
@@ -48,6 +49,7 @@ const VoiceControls = ({ onCommand }) => {
       recognitionRef.current.stop();
       setIsListening(false);
     } else {
+      setTranscript('');
       recognitionRef.current.start();
       setIsListening(true);
     }

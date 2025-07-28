@@ -65,10 +65,12 @@ const HeadTracking = ({ onHeadMove }) => {
             const centerY = totalY / count;
             
             // Normalize to -1 to 1 range
-            const normalizedX = (centerX / canvas.width - 0.5) * 2;
-            const normalizedY = (centerY / canvas.height - 0.5) * 2;
+            const normalizedX = Math.max(-1, Math.min(1, (centerX / canvas.width - 0.5) * 2));
+            const normalizedY = Math.max(-1, Math.min(1, (centerY / canvas.height - 0.5) * 2));
             
-            onHeadMove({ x: normalizedX, y: -normalizedY });
+            if (onHeadMove && typeof onHeadMove === 'function') {
+              onHeadMove({ x: normalizedX, y: -normalizedY });
+            }
           }
           
           animationFrame = requestAnimationFrame(detectFace);
